@@ -1,5 +1,10 @@
 (executable
- (name solve)
- (libraries
+  (name solve)
+  (libraries
     base
- ))
+    stdio
+  )
+  (preprocess
+    (pps ppx_let)
+  )
+)
