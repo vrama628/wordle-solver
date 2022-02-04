@@ -117,4 +117,5 @@ let print_guess (guess, result) =
 let () =
   ignore all_possible_guess_result_cells;
   ignore guess;
-  print_guess (target_word, check_guess ~target:target_word ~guess:(Sys.get_argv ()).(2))
+  let guess_word = (Sys.get_argv ()).(2) in
+  print_guess (guess_word, check_guess ~target:target_word ~guess:guess_word)
