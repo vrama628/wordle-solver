@@ -21,6 +21,10 @@ let all_words : (string, _) Set.t =
   close ic;
   all_words
 
+(* TODO: delete once optimized *)
+let () = Random.init 628
+let all_words = Set.filter all_words ~f:(fun _ -> Random.int 100 < 10)
+
 type guess_result_cell =
   | Green
   | Yellow
@@ -88,18 +92,35 @@ let all_possible_guess_results : guess_result list =
 (* the state of the game; i.e. results of past guesses *)
 type state = (string * guess_result) list
 
-let guess (state : state) : string =
-  let all_remaining_possible_words : (string, _) Set.t =
+(* THE MAIN AI *)
+let decide_guess (state : state) : string =
+  let all_remaining_possible_words =
     Set.filter all_words ~f:(fun target ->
       List.for_all state ~f:(fun (guess, guess_result) ->
         check_guess ~target ~guess = guess_result
       )
     )
   in
-  ignore all_remaining_possible_words;
-  "TOODO"
-
-let target_word = (Sys.get_argv ()).(1)
+  Set.fold
+    all_remaining_possible_words
+    ~init:(Int.max_value, ".....")
+    ~f:(fun (acc_n, acc_word) guess ->
+      let worst_case_outcome =
+        all_possible_guess_results
+        |> List.map ~f:(fun guess_result ->
+            Set.count all_remaining_possible_words ~f:(fun target ->
+              check_guess ~target ~guess = guess_result
+            )
+          )
+        |> List.max_elt ~compare:Int.compare
+        |> (fun x -> Option.value_exn x)
+      in
+      if worst_case_outcome < acc_n then
+        (worst_case_outcome, guess)
+      else
+        (acc_n, acc_word)
+    )
+  |> snd
 
 let print_guess (guess, result) =
   List.zip_exn (String.to_list guess) result
@@ -112,10 +133,18 @@ let print_guess (guess, result) =
       in
       printf "\027[1;%dm%c" color c
     );
-  printf "\027[0m\n" 
+  printf "\027[0m\n%!" 
 
-let () =
-  ignore all_possible_guess_result_cells;
-  ignore guess;
-  let guess_word = (Sys.get_argv ()).(2) in
-  print_guess (guess_word, check_guess ~target:target_word ~guess:guess_word)
+(* TODO let target = (Sys.get_argv ()).(1) *)
+let target = Set.choose_exn all_words
+
+let rec main state =
+  let guess = decide_guess state in
+  let result = check_guess ~target ~guess in
+  print_guess (guess, result);
+  if List.for_all result ~f:((=) Green) then
+    printf "Finished after %d guesses.\n" (List.length state + 1)
+  else
+    main ((guess, result) :: state)
+
+let () = main []

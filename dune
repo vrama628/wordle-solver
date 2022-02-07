@@ -3,8 +3,7 @@
   (libraries
     base
     stdio
+    landmarks
   )
-  (preprocess
-    (pps ppx_let)
-  )
+  (preprocess (pps ppx_let landmarks-ppx --auto))
 )
