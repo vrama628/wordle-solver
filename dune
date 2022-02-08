@@ -5,5 +5,10 @@
     stdio
     landmarks
   )
-  (preprocess (pps ppx_let landmarks-ppx --auto))
+  (preprocess (pps
+    ppx_let
+    ppx_compare
+    ppx_sexp_conv
+    landmarks-ppx --auto
+  ))
 )
