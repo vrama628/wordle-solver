@@ -66,7 +66,7 @@ type state = (string * GuessResult.t) list
 
 (* THE MAIN AI *)
 let[@landmark] decide_guess (state : state) : string =
-  (* if List.is_empty state then "crane" else *) (* performance optimization *)
+  if List.is_empty state then "crane" else (* performance optimization *)
   let all_remaining_possible_words =
     Set.filter all_words ~f:(fun target ->
       List.for_all state ~f:(fun (guess, guess_result) ->
@@ -78,7 +78,7 @@ let[@landmark] decide_guess (state : state) : string =
     all_remaining_possible_words
     ~init:(Int.max_value, ".....")
     ~f:(fun (acc_n, acc_word) guess ->
-      let result_frequencies = Hashtbl.create (*~size:243*) (module GuessResult) in
+      let result_frequencies = Hashtbl.create ~size:243 (module GuessResult) in
       Set.iter all_remaining_possible_words ~f:(fun target ->
         Hashtbl.incr result_frequencies (check_guess ~target ~guess)
       );
@@ -111,24 +111,31 @@ let print_guess (guess, result) =
 let rec run ?(state=[]) target =
   let guess = decide_guess state in
   let result = check_guess ~target ~guess in
-  print_guess (guess, result);
+  (*print_guess (guess, result);*)
   if List.for_all result ~f:((=) Green) then
     (List.length state + 1)
   else
     run ~state:((guess, result) :: state) target
 
 let () =
-  let successes =
-    Option.fold (Set.choose all_words) ~init:0 ~f:(fun acc word ->
+  let distribution =
+    Set.fold all_words ~init:(Map.empty (module Int)) ~f:(fun acc word ->
       let num_guesses = run word in
-      (* printf ".%!"; *)
-      if num_guesses <= 6 then acc + 1 else acc
+      printf ".%!";
+      Map.update acc num_guesses ~f:(function None -> 1 | Some n -> n + 1)
     )
   in
+  let successes =
+    let (success_distribution, _, _) = Map.split distribution 7 in
+    Map.fold success_distribution ~init:0 ~f:(fun ~key:_ ~data acc -> data + acc)
+  in
   let num_words = Set.length all_words in
-  ignore (successes, num_words)
-  (*printf
-    "\nSuccesses: %d/%d = %.2f\n%!"
+  printf
+    "\nSuccesses: %d/%d = %.2f\n"
     successes
     num_words
-    ((Float.of_int successes) *. 100. /. (Float.of_int num_words))*)
+    ((Float.of_int successes) *. 100. /. (Float.of_int num_words));
+  printf "Distribution:\n";
+  Map.iteri distribution ~f:(fun ~key ~data ->
+    printf "\t%d: %d\n" key data
+  )
