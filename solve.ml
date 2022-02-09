@@ -25,74 +25,48 @@ type guess_result_cell =
   | Green
   | Yellow
   | Gray
-  [@@deriving compare, sexp_of]
+  [@@deriving sexp_of, eq]
 
-let all_possible_guess_result_cells : guess_result_cell list =
-  [Green; Yellow; Gray]
-
-(* invariant: length 5 *)
-type guess_result = guess_result_cell list
-  [@@deriving compare, sexp_of]
-
-module GuessResultComparator = struct
-  type t = guess_result
-  include Comparator.Make(struct
-    type t = guess_result
-    let compare = compare_guess_result
-    let sexp_of_t = sexp_of_guess_result
-  end)
+module GuessResult = struct
+  (* invariant: length 5 *)
+  type t = guess_result_cell list
+  [@@deriving sexp_of]
+  let hash = Hashtbl.hash
+  let compare = Stdlib.compare
 end
 
-let rec remove_one (l : 'a list) (elt : 'a) : 'a list option =
+let rec remove_one (l : char list) (elt : char) : char list option =
   match l with
   | [] -> None
   | x::xs ->
-    if x = elt then
+    if Char.equal x elt then
       Some xs
     else
       Option.map (remove_one xs elt) ~f:(List.cons x)
 
 let check_guess ~target ~guess =
   let res = Array.create ~len:5 Gray in
-  let (_, leftovers) =
-    Fn.apply_n_times
-      ~n:5
-      (fun (i, acc) ->
-        let acc =
-          if guess.[i] = target.[i] then (
-            res.(i) <- Green;
-            acc
-          ) else (
-            target.[i] :: acc
-          )
-        in
-        (i + 1, acc)
-      )
-      (0, [])
-  in
-  let _ =
-    Fn.apply_n_times
-      ~n:5
-      (fun (i, leftovers) ->
-        let leftovers =
-          match res.(i), remove_one leftovers guess.[i] with
-          | Gray, Some leftovers ->
-            res.(i) <- Yellow;
-            leftovers
-          | _ -> leftovers
-        in
-        (i + 1, leftovers)
-      )
-      (0, leftovers)
-  in
+  let leftovers = Hashtbl.create ~size:5 (module Char) in
+  for i = 0 to 4 do
+    if Char.equal guess.[i] target.[i] then
+      res.(i) <- Green
+    else
+      Hashtbl.incr leftovers target.[i]
+  done;
+  for i = 0 to 4 do
+    if equal_guess_result_cell res.(i) Gray && Hashtbl.mem leftovers guess.[i] then (
+      res.(i) <- Yellow;
+      Hashtbl.decr ~remove_if_zero:true leftovers guess.[i]
+    )
+  done;
   Array.to_list res
 
 (* the state of the game; i.e. results of past guesses *)
-type state = (string * guess_result) list
+type state = (string * GuessResult.t) list
 
 (* THE MAIN AI *)
-let decide_guess (state : state) : string =
-  if List.is_empty state then "crane" else (* performance optimization *)
+let[@landmark] decide_guess (state : state) : string =
+  (* if List.is_empty state then "crane" else *) (* performance optimization *)
   let all_remaining_possible_words =
     Set.filter all_words ~f:(fun target ->
       List.for_all state ~f:(fun (guess, guess_result) ->
@@ -104,16 +78,15 @@ let decide_guess (state : state) : string =
     all_remaining_possible_words
     ~init:(Int.max_value, ".....")
     ~f:(fun (acc_n, acc_word) guess ->
+      let result_frequencies = Hashtbl.create (*~size:243*) (module GuessResult) in
+      Set.iter all_remaining_possible_words ~f:(fun target ->
+        Hashtbl.incr result_frequencies (check_guess ~target ~guess)
+      );
       let worst_case_outcome =
-        Set.fold all_remaining_possible_words
-          ~init:(Map.empty (module GuessResultComparator))
-          ~f:(fun acc target ->
-            let guess_result = check_guess ~target ~guess in
-            Map.update acc guess_result ~f:(Option.value_map ~default:0 ~f:((+) 1))
-          )
-        |> Map.data
-        |> List.max_elt ~compare:Int.compare
-        |> (fun x -> Option.value_exn x)
+        Hashtbl.fold
+          result_frequencies
+          ~init:Int.min_value
+          ~f:(fun ~key:_ ~data acc -> Int.max data acc)
       in
       if worst_case_outcome < acc_n then
         (worst_case_outcome, guess)
@@ -138,7 +111,7 @@ let print_guess (guess, result) =
 let rec run ?(state=[]) target =
   let guess = decide_guess state in
   let result = check_guess ~target ~guess in
-  (*print_guess (guess, result);*)
+  print_guess (guess, result);
   if List.for_all result ~f:((=) Green) then
     (List.length state + 1)
   else
@@ -146,15 +119,16 @@ let rec run ?(state=[]) target =
 
 let () =
   let successes =
-    Set.fold all_words ~init:0 ~f:(fun acc word ->
+    Option.fold (Set.choose all_words) ~init:0 ~f:(fun acc word ->
       let num_guesses = run word in
-      printf ".%!";
+      (* printf ".%!"; *)
       if num_guesses <= 6 then acc + 1 else acc
     )
   in
   let num_words = Set.length all_words in
-  printf
+  ignore (successes, num_words)
+  (*printf
     "\nSuccesses: %d/%d = %.2f\n%!"
     successes
     num_words
-    ((Float.of_int successes) *. 100. /. (Float.of_int num_words))
+    ((Float.of_int successes) *. 100. /. (Float.of_int num_words))*)
