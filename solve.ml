@@ -35,15 +35,6 @@ module GuessResult = struct
   let compare = Stdlib.compare
 end
 
-let rec remove_one (l : char list) (elt : char) : char list option =
-  match l with
-  | [] -> None
-  | x::xs ->
-    if Char.equal x elt then
-      Some xs
-    else
-      Option.map (remove_one xs elt) ~f:(List.cons x)
-
 let check_guess ~target ~guess =
   let res = Array.create ~len:5 Gray in
   let leftovers = Hashtbl.create ~size:5 (module Char) in
